@@ -1,85 +1,73 @@
-// We import tools that Node.js already gives us
-// fs = file system (reading and writing files)
 import fs from "fs";
 import OpenAI from "openai";
 
 // ----------------------------
-// 1. SET UP OPENAI
+// 1. OPENAI SETUP
 // ----------------------------
 
-// This creates a connection to OpenAI using your API key
-// Your key lives safely in your environment variables
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
 // ----------------------------
-// 2. FIGURE OUT TODAY
+// 2. TODAY'S DATE
 // ----------------------------
 
-// This turns the current date into a simple string like "2026-01-03"
-// We use this as our "label" for today's poem
 const today = new Date().toISOString().split("T")[0];
 
 // ----------------------------
-// 3. LOAD FILE PATHS
+// 3. FILE PATHS
 // ----------------------------
 
-// Where the base prompt lives
 const basePromptPath = "prompts/base_prompt.txt";
-
-// Where the focus & tone options live
 const configPath = "prompts/config.json";
-
-// Where we store poems we already created
 const storedPoemsPath = "prompts/stored_poems.json";
+const fallbackPoemsPath = "prompts/fallback_poems.json";
 
 // ----------------------------
-// 4. READ FILES FROM DISK
+// 4. LOAD FILES
 // ----------------------------
 
-// Load the base prompt text
 const basePrompt = fs.readFileSync(basePromptPath, "utf-8");
-
-// Load the config (focus + tone)
 const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
 
-// Load stored poems (or start empty if none exist)
 let storedPoems = {};
 if (fs.existsSync(storedPoemsPath)) {
   storedPoems = JSON.parse(fs.readFileSync(storedPoemsPath, "utf-8"));
 }
 
 // ----------------------------
-// 5. IF TODAY'S POEM ALREADY EXISTS, USE IT
+// 5. IF TODAY ALREADY EXISTS, SERVE IT
 // ----------------------------
 
 if (storedPoems[today]) {
   console.log("📖 Serving stored poem for today:\n");
   console.log(storedPoems[today].poem);
-  process.exit(); // stop the program
+  process.exit();
 }
 
 // ----------------------------
-// 6. PICK RANDOM FOCUS & TONE
+// 6. HELPERS
 // ----------------------------
 
-// This helper function picks one random item from a list
 function pickRandom(list) {
   return list[Math.floor(Math.random() * list.length)];
 }
 
+function getFallbackPoem() {
+  const fallbackData = JSON.parse(
+    fs.readFileSync(fallbackPoemsPath, "utf-8")
+  );
+  return pickRandom(fallbackData).poem;
+}
+
+// ----------------------------
+// 7. BUILD PROMPT
+// ----------------------------
+
 const focus = pickRandom(config.focus);
 const tone = pickRandom(config.tone);
 
-// ----------------------------
-// 7. BUILD FINAL PROMPT
-// ----------------------------
-
-// We combine:
-// - the base prompt
-// - today’s subtle focus
-// - today’s emotional tone
 const finalPrompt = `
 ${basePrompt}
 
@@ -88,7 +76,7 @@ Primary emotional tone: ${tone}
 `;
 
 // ----------------------------
-// 8. ASK OPENAI TO WRITE THE POEM
+// 8. GENERATE POEM
 // ----------------------------
 
 async function generatePoem() {
@@ -103,12 +91,7 @@ async function generatePoem() {
       ],
     });
 
-    // Get the poem text from the response
     const poem = response.choices[0].message.content.trim();
-
-    // ----------------------------
-    // 9. SAVE POEM TO DISK
-    // ----------------------------
 
     storedPoems[today] = {
       poem: poem,
@@ -121,20 +104,33 @@ async function generatePoem() {
       JSON.stringify(storedPoems, null, 2)
     );
 
-    // ----------------------------
-    // 10. PRINT POEM
-    // ----------------------------
-
-    console.log("🌤️ Today’s poem:\n");
+    console.log("🌤️ Today’s poem (OpenAI):\n");
     console.log(poem);
 
   } catch (error) {
-    console.error("Something went wrong:", error.message);
+    console.log("⚠️ OpenAI failed — using fallback poem.\n");
+
+    const fallbackPoem = getFallbackPoem();
+
+    storedPoems[today] = {
+      poem: fallbackPoem,
+      source: "fallback",
+      createdAt: new Date().toISOString(),
+      error: error.message,
+    };
+
+    fs.writeFileSync(
+      storedPoemsPath,
+      JSON.stringify(storedPoems, null, 2)
+    );
+
+    console.log("🌿 Today’s poem (Fallback):\n");
+    console.log(fallbackPoem);
   }
 }
 
 // ----------------------------
-// 11. RUN THE FUNCTION
+// 9. RUN
 // ----------------------------
 
 generatePoem();
