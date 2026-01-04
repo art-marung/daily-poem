@@ -1,9 +1,11 @@
 {
   "name": "daily-poem",
   "version": "1.0.0",
-  "description": "",
+  "description": "Core daily poem engine with automated scheduling",
+  "type": "module",
   "main": "index.js",
   "scripts": {
+    "start": "node daily_scheduler.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -13,12 +15,12 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "module",
   "bugs": {
     "url": "https://github.com/art-marung/daily-poem/issues"
   },
   "homepage": "https://github.com/art-marung/daily-poem#readme",
   "dependencies": {
+    "node-cron": "^4.2.1",
     "openai": "^6.15.0"
   }
 }
