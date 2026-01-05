@@ -20,6 +20,7 @@
   },
   "homepage": "https://github.com/art-marung/daily-poem#readme",
   "dependencies": {
+    "express": "^5.2.1",
     "node-cron": "^4.2.1",
     "openai": "^6.15.0"
   }
