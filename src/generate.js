@@ -1,4 +1,5 @@
 import fs from "fs";
+import path from "path";
 import OpenAI from "openai";
 
 // ----------------------------
@@ -107,6 +108,13 @@ async function generatePoem() {
     console.log("🌤️ Today’s poem (OpenAI):\n");
     console.log(poem);
 
+    updateDailyStatus(today, {
+  scheduled_run_status: "success",
+  generation_source: "openai",
+  fallback_used: false,
+  error_flag: false
+});
+
   } catch (error) {
     console.log("⚠️ OpenAI failed — using fallback poem.\n");
 
@@ -126,6 +134,40 @@ async function generatePoem() {
 
     console.log("🌿 Today’s poem (Fallback):\n");
     console.log(fallbackPoem);
+
+    updateDailyStatus(today, {
+  scheduled_run_status: "success",
+  generation_source: "fallback",
+  fallback_used: true,
+  error_flag: false
+});
+
+  }
+}
+
+
+const dailyStatusPath = path.join("analytics", "daily_status.json");
+
+function updateDailyStatus(dateKey, statusUpdate) {
+  let data = {};
+
+  try {
+    if (fs.existsSync(dailyStatusPath)) {
+      data = JSON.parse(fs.readFileSync(dailyStatusPath, "utf-8"));
+    }
+  } catch (err) {
+    console.error("Failed to read daily_status.json:", err);
+  }
+
+  data[dateKey] = {
+    ...(data[dateKey] || {}),
+    ...statusUpdate
+  };
+
+  try {
+    fs.writeFileSync(dailyStatusPath, JSON.stringify(data, null, 2));
+  } catch (err) {
+    console.error("Failed to write daily_status.json:", err);
   }
 }
 
