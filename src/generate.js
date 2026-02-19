@@ -88,8 +88,8 @@ function sanitizePoem(rawPoem) {
     return !forbiddenSingleWords.includes(line);
   });
 
-  // Enforce structural boundary (8–14 lines)
-  if (lines.length < 8 || lines.length > 14) {
+  // Enforce structural boundary (6–16 lines)
+if (lines.length < 6 || lines.length > 16) {
     return null;
   }
 
