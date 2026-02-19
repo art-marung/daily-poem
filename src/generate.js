@@ -24,6 +24,7 @@ const basePromptPath = "prompts/base_prompt.txt";
 const configPath = "prompts/config.json";
 const storedPoemsPath = "prompts/stored_poems.json";
 const fallbackPoemsPath = "prompts/fallback_poems.json";
+const dailyStatusPath = path.join("analytics", "daily_status.json");
 
 // ----------------------------
 // 4. LOAD FILES
@@ -63,7 +64,40 @@ function getFallbackPoem() {
 }
 
 // ----------------------------
-// 7. BUILD PROMPT
+// 7. SANITATION LAYER
+// ----------------------------
+
+function sanitizePoem(rawPoem) {
+  const forbiddenSingleWords = [
+    "Menu",
+    "Home",
+    "Login",
+    "Sign In",
+    "Sign Out",
+    "Register",
+    "Search"
+  ];
+
+  let lines = rawPoem
+    .split("\n")
+    .map(line => line.trim())
+    .filter(line => line.length > 0);
+
+  // Remove isolated UI/navigation artifacts
+  lines = lines.filter(line => {
+    return !forbiddenSingleWords.includes(line);
+  });
+
+  // Enforce structural boundary (8–14 lines)
+  if (lines.length < 8 || lines.length > 14) {
+    return null;
+  }
+
+  return lines.join("\n");
+}
+
+// ----------------------------
+// 8. BUILD PROMPT
 // ----------------------------
 
 const focus = pickRandom(config.focus);
@@ -77,7 +111,7 @@ Primary emotional tone: ${tone}
 `;
 
 // ----------------------------
-// 8. GENERATE POEM
+// 9. GENERATE POEM
 // ----------------------------
 
 async function generatePoem() {
@@ -92,7 +126,12 @@ async function generatePoem() {
       ],
     });
 
-    const poem = response.choices[0].message.content.trim();
+    const rawPoem = response.choices[0].message.content.trim();
+    const poem = sanitizePoem(rawPoem);
+
+    if (!poem) {
+      throw new Error("Sanitation failed: structural violation");
+    }
 
     storedPoems[today] = {
       poem: poem,
@@ -109,14 +148,14 @@ async function generatePoem() {
     console.log(poem);
 
     updateDailyStatus(today, {
-  scheduled_run_status: "success",
-  generation_source: "openai",
-  fallback_used: false,
-  error_flag: false
-});
+      scheduled_run_status: "success",
+      generation_source: "openai",
+      fallback_used: false,
+      error_flag: false
+    });
 
   } catch (error) {
-    console.log("⚠️ OpenAI failed — using fallback poem.\n");
+    console.log("⚠️ OpenAI failed or sanitation failed — using fallback poem.\n");
 
     const fallbackPoem = getFallbackPoem();
 
@@ -136,17 +175,17 @@ async function generatePoem() {
     console.log(fallbackPoem);
 
     updateDailyStatus(today, {
-  scheduled_run_status: "success",
-  generation_source: "fallback",
-  fallback_used: true,
-  error_flag: false
-});
-
+      scheduled_run_status: "success",
+      generation_source: "fallback",
+      fallback_used: true,
+      error_flag: false
+    });
   }
 }
 
-
-const dailyStatusPath = path.join("analytics", "daily_status.json");
+// ----------------------------
+// 10. ANALYTICS UPDATE
+// ----------------------------
 
 function updateDailyStatus(dateKey, statusUpdate) {
   let data = {};
@@ -172,7 +211,7 @@ function updateDailyStatus(dateKey, statusUpdate) {
 }
 
 // ----------------------------
-// 9. RUN
+// 11. RUN
 // ----------------------------
 
 generatePoem();
