@@ -88,8 +88,13 @@ function sanitizePoem(rawPoem) {
     return !forbiddenSingleWords.includes(line);
   });
 
+  const lineCount = lines.length;
+
   // Enforce structural boundary (6–16 lines)
-if (lines.length < 6 || lines.length > 16) {
+  if (lineCount < 6 || lineCount > 16) {
+    console.log(
+      `⚠️ Sanitation rejected poem — line count: ${lineCount} (allowed: 6–16)`
+    );
     return null;
   }
 
