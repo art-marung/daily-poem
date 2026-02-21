@@ -39,12 +39,21 @@ if (fs.existsSync(storedPoemsPath)) {
 }
 
 // ----------------------------
-// 5. IF TODAY ALREADY EXISTS, SERVE IT
+// 5. IF TODAY ALREADY EXISTS
 // ----------------------------
 
 if (storedPoems[today]) {
-  console.log("📖 Serving stored poem for today:\n");
+  console.log("\nToday’s Poem\n");
   console.log(storedPoems[today].poem);
+
+  console.log("\n--- RUN SUMMARY ---");
+  console.log("Source: stored");
+  console.log("Sanitation: n/a");
+  console.log("Duplication retry: false");
+  console.log("Fallback used: false");
+  console.log("Failure reason: none");
+  console.log("-------------------\n");
+
   process.exit();
 }
 
@@ -83,14 +92,12 @@ function sanitizePoem(rawPoem) {
     .map(line => line.trim())
     .filter(line => line.length > 0);
 
-  // Remove isolated UI/navigation artifacts
   lines = lines.filter(line => {
     return !forbiddenSingleWords.includes(line);
   });
 
   const lineCount = lines.length;
 
-  // Enforce structural boundary (6–16 lines)
   if (lineCount < 6 || lineCount > 16) {
     console.log(
       `⚠️ Sanitation rejected poem — line count: ${lineCount} (allowed: 6–16)`
@@ -102,7 +109,54 @@ function sanitizePoem(rawPoem) {
 }
 
 // ----------------------------
-// 8. BUILD PROMPT
+// 8. DUPLICATION GUARD
+// ----------------------------
+
+function normalizeText(text) {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s]/g, "")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function calculateSimilarity(textA, textB) {
+  const wordsA = new Set(normalizeText(textA));
+  const wordsB = new Set(normalizeText(textB));
+
+  let common = 0;
+  wordsA.forEach(word => {
+    if (wordsB.has(word)) common++;
+  });
+
+  return common / Math.max(wordsA.size, 1);
+}
+
+function isTooSimilarToRecent(poem) {
+  const recentDates = Object.keys(storedPoems)
+    .sort()
+    .reverse()
+    .slice(0, 3);
+
+  for (const date of recentDates) {
+    const similarity = calculateSimilarity(
+      poem,
+      storedPoems[date].poem
+    );
+
+    if (similarity >= 0.7) {
+      console.log(
+        `⚠️ Similarity detected (${(similarity * 100).toFixed(1)}%) with ${date}`
+      );
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// ----------------------------
+// 9. BUILD PROMPT
 // ----------------------------
 
 const focus = pickRandom(config.focus);
@@ -116,30 +170,51 @@ Primary emotional tone: ${tone}
 `;
 
 // ----------------------------
-// 9. GENERATE POEM
+// 10. GENERATE POEM
 // ----------------------------
 
 async function generatePoem() {
+  let failureReason = "none";
+  let duplicationRetryUsed = false;
+  let fallbackUsed = false;
+  let sanitationPassed = true;
+
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "user",
-          content: finalPrompt,
-        },
-      ],
+      messages: [{ role: "user", content: finalPrompt }],
     });
 
-    const rawPoem = response.choices[0].message.content.trim();
-    const poem = sanitizePoem(rawPoem);
+    let rawPoem = response.choices[0].message.content.trim();
+    let poem = sanitizePoem(rawPoem);
 
     if (!poem) {
-      throw new Error("Sanitation failed: structural violation");
+      sanitationPassed = false;
+      failureReason = "sanitation_rejected";
+      throw new Error("SANITATION_FAILED");
+    }
+
+    if (isTooSimilarToRecent(poem)) {
+      duplicationRetryUsed = true;
+      console.log("🔁 Regenerating due to duplication risk...");
+
+      const retryResponse = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: finalPrompt }],
+      });
+
+      rawPoem = retryResponse.choices[0].message.content.trim();
+      poem = sanitizePoem(rawPoem);
+
+      if (!poem) {
+        sanitationPassed = false;
+        failureReason = "sanitation_rejected_after_retry";
+        throw new Error("SANITATION_FAILED_AFTER_RETRY");
+      }
     }
 
     storedPoems[today] = {
-      poem: poem,
+      poem,
       source: "openai",
       createdAt: new Date().toISOString(),
     };
@@ -152,15 +227,12 @@ async function generatePoem() {
     console.log("\nToday’s Poem\n");
     console.log(poem);
 
-    updateDailyStatus(today, {
-      scheduled_run_status: "success",
-      generation_source: "openai",
-      fallback_used: false,
-      error_flag: false
-    });
-
   } catch (error) {
-    console.log("⚠️ OpenAI failed or sanitation failed — using fallback poem.\n");
+    fallbackUsed = true;
+
+    if (failureReason === "none") {
+      failureReason = "api_failure";
+    }
 
     const fallbackPoem = getFallbackPoem();
 
@@ -178,18 +250,27 @@ async function generatePoem() {
 
     console.log("\nToday’s Poem\n");
     console.log(fallbackPoem);
-
-    updateDailyStatus(today, {
-      scheduled_run_status: "success",
-      generation_source: "fallback",
-      fallback_used: true,
-      error_flag: false
-    });
   }
+
+  updateDailyStatus(today, {
+    scheduled_run_status: "success",
+    generation_source: fallbackUsed ? "fallback" : "openai",
+    fallback_used: fallbackUsed,
+    failure_reason: failureReason,
+    duplication_retry_used: duplicationRetryUsed
+  });
+
+  console.log("\n--- RUN SUMMARY ---");
+  console.log(`Source: ${fallbackUsed ? "fallback" : "openai"}`);
+  console.log(`Sanitation: ${sanitationPassed ? "passed" : "failed"}`);
+  console.log(`Duplication retry: ${duplicationRetryUsed}`);
+  console.log(`Fallback used: ${fallbackUsed}`);
+  console.log(`Failure reason: ${failureReason}`);
+  console.log("-------------------\n");
 }
 
 // ----------------------------
-// 10. ANALYTICS UPDATE
+// 11. ANALYTICS UPDATE
 // ----------------------------
 
 function updateDailyStatus(dateKey, statusUpdate) {
@@ -216,7 +297,7 @@ function updateDailyStatus(dateKey, statusUpdate) {
 }
 
 // ----------------------------
-// 11. RUN
+// 12. RUN
 // ----------------------------
 
 generatePoem();
