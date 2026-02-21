@@ -149,7 +149,7 @@ async function generatePoem() {
       JSON.stringify(storedPoems, null, 2)
     );
 
-    console.log("🌤️ Today’s poem (OpenAI):\n");
+    console.log("\nToday’s Poem\n");
     console.log(poem);
 
     updateDailyStatus(today, {
@@ -176,7 +176,7 @@ async function generatePoem() {
       JSON.stringify(storedPoems, null, 2)
     );
 
-    console.log("🌿 Today’s poem (Fallback):\n");
+    console.log("\nToday’s Poem\n");
     console.log(fallbackPoem);
 
     updateDailyStatus(today, {
